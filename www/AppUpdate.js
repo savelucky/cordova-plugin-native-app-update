@@ -25,13 +25,13 @@ var exec = require("cordova/exec");
 var EMPTY_FN = function() {}
 
 var AppUpdate = {
-    needsUpdate: function(success, failure, force_api=null, force_key=null) {
+    needsUpdate: function(success, failure, appId= null, currentVersionArg= null) {
         // if (typeof(taskId) !== 'string') {
         //     throw "AppUpdate.needsUpdate now requires an appId string as the first argument";
         // }
         success = success || EMPTY_FN;
         failure = failure || EMPTY_FN;
-        exec(success, failure, "AppUpdate", "needsUpdate",[force_api,force_key]);
+        exec(success, failure, "AppUpdate", "needsUpdate",[appId, currentVersionArg]);
     }
 };
 

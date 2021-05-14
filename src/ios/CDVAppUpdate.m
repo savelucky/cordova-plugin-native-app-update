@@ -14,25 +14,31 @@ static NSString *const TAG = @"CDVAppUpdate";
 -(BOOL) needsUpdate:(CDVInvokedUrlCommand*)command
 {
     NSDictionary* infoDictionary = [[NSBundle mainBundle] infoDictionary];
-    NSString* appID = infoDictionary[@"CFBundleIdentifier"];
-    NSString* force_api = nil;
-    NSString* force_key = nil;
+    NSString* appIdArg = nil;
+    NSString* currentVersionArg = nil;
     if ([command.arguments count] > 0) {
-        force_api = [command.arguments objectAtIndex:0];
-        force_key = [command.arguments objectAtIndex:1];
+        if ([[command.arguments objectAtIndex:0] isKindOfClass:[NSString class]]) {
+            appIdArg = [command.arguments objectAtIndex:0];
+        }
+        if ([[command.arguments objectAtIndex:1] isKindOfClass:[NSString class]]) {
+            currentVersionArg = [command.arguments objectAtIndex:1];
+        }
     }
-    NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"http://itunes.apple.com/lookup?bundleId=%@", appID]];
+    NSString* appID = appIdArg == nil ? infoDictionary[@"CFBundleIdentifier"] : appIdArg;
+    NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"http://itunes.apple.com/lookup?country=ru&bundleId=%@", appID]];
     NSData* data = [NSData dataWithContentsOfURL:url];
     NSDictionary* lookup = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     NSMutableDictionary *resultObj = [[NSMutableDictionary alloc]initWithCapacity:10];
-    BOOL update_avail = NO;
-    BOOL update_force = NO;
+    NSNumber* update_avail = [NSNumber numberWithInt:0];
+    NSString* appStoreVersion = @"";
+    NSString* appStoreUr = @"";
+    NSString* currentVersion = currentVersionArg == nil ? infoDictionary[@"CFBundleShortVersionString"] : currentVersionArg;
 
     NSLog(@"%@ Checking for app update", TAG);
     if ([lookup[@"resultCount"] integerValue] == 1) {
-        NSString* appStoreVersion = lookup[@"results"][0][@"version"];
+        appStoreVersion = lookup[@"results"][0][@"version"];
+        appStoreUrl = lookup[@"results"][0][@"trackViewUrl"];
         NSArray* appStoreVersionArr = [appStoreVersion componentsSeparatedByString:@"."];
-        NSString* currentVersion = infoDictionary[@"CFBundleShortVersionString"];
         NSArray* currentVersionArr = [currentVersion componentsSeparatedByString:@"."];
 
         for (int idx=0; idx<[appStoreVersionArr count]; idx++) {
@@ -41,26 +47,26 @@ static NSString *const TAG = @"CDVAppUpdate";
             NSNumber* appStoreVersionNumber = [f numberFromString:[appStoreVersionArr objectAtIndex:idx]];
             NSNumber* currentVersionNumber = [f numberFromString:[currentVersionArr objectAtIndex:idx]];
 
+            if ([currentVersionNumber compare:appStoreVersionNumber] == NSOrderedDescending) {
+                NSLog(@"%@ Already has newer version [%@ < %@]", TAG, appStoreVersion, currentVersion);
+                update_avail = [NSNumber numberWithInt:2];
+                break;
+            }
             if ([currentVersionNumber compare:appStoreVersionNumber] == NSOrderedAscending) {
-                NSLog(@"%@ Need to update [%@ != %@]", TAG, appStoreVersion, currentVersion);
-                if ([force_api length] > 0) {
-                    NSURL* force_url = [NSURL URLWithString:[NSString stringWithFormat:force_api]];
-                    NSData* force_data = [NSData dataWithContentsOfURL:force_url];
-                    NSDictionary* force_lookup = [NSJSONSerialization JSONObjectWithData:force_data options:0 error:nil];
-                    update_force = [force_lookup objectForKey:force_key];
-                    for (id key in force_lookup) {
-                        [resultObj setObject:[force_lookup objectForKey:key] forKey:key];
-                    }
-                }
-                NSLog(@"%@ Force Update: %i", TAG, update_force);
-                update_avail = YES;
+                NSLog(@"%@ Need to update [%@ > %@]", TAG, appStoreVersion, currentVersion);
+                update_avail = [NSNumber numberWithInt:1];
                 break;
             }
         }
+    } else {
+        update_avail = [NSNumber numberWithInt:3];
     }
 
-    
-    [resultObj setObject:[NSNumber numberWithBool:update_avail] forKey:@"update_available"];
+    [resultObj setObject:update_avail forKey:@"updateAvailable"];
+    [resultObj setObject:currentVersion forKey:@"currentVersion"];
+    [resultObj setObject:appID forKey:@"appId"];
+    [resultObj setObject:appStoreVersion forKey:@"storeVersion"];
+    [resultObj setObject:appStoreUrl forKey:@"storeUrl"];
 
     CDVPluginResult* result = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:resultObj];
     [result setKeepCallbackAsBool:YES];

@@ -83,7 +83,7 @@ public class CDVAppUpdate extends CordovaPlugin {
         return false;
     }
 
-    private void needsUpdate(final String force_api, final String force_key) throws JSONException {
+    private void needsUpdate(final String appIdArg, final String currentVersionArg) throws JSONException {
     /*
         // Get the app context
        Context this_ctx = (Context) this.cordova.getActivity();
@@ -126,11 +126,14 @@ public class CDVAppUpdate extends CordovaPlugin {
        });
     */
         int update_avail = 0;
-        int update_force = 0;
         JSONObject resultObj = new JSONObject();
         String currentVersion = "0.0.0";
+        String appId = appIdArg == "null" ? this.cordova.getActivity().getPackageName() : appIdArg;
+        String storeUrl = "https://play.google.com/store/apps/details?id=" + appId;
         try {
-            currentVersion = this.cordova.getActivity().getPackageManager().getPackageInfo(this.cordova.getActivity().getPackageName(), 0).versionName;
+            currentVersion = currentVersionArg == "null"
+                ? this.cordova.getActivity().getPackageManager().getPackageInfo(this.cordova.getActivity().getPackageName(), 0).versionName
+                : currentVersionArg;
         } catch (NameNotFoundException e) {
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
@@ -149,9 +152,9 @@ public class CDVAppUpdate extends CordovaPlugin {
             mCallbackContext.sendPluginResult(mPluginResult);
             return;
         }
-        String newVersion = null;
+        String newVersion = "";
         try {
-            newVersion = Jsoup.connect("https://play.google.com/store/apps/details?id=" + this.cordova.getActivity().getPackageName() + "&hl=en")
+            newVersion = Jsoup.connect(storeUrl + "&hl=en")
                             .timeout(30000)
                             .userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
                             .referrer("http://www.google.com")
@@ -164,65 +167,29 @@ public class CDVAppUpdate extends CordovaPlugin {
             PrintWriter pw = new PrintWriter(sw);
             e.printStackTrace(pw);
             Log.e(TAG, sw.toString());
-            final JSONObject taskErrorResponse = new JSONObject();
-            mPluginResult = new PluginResult(PluginResult.Status.ERROR);
-            try {
-                mCallbackContext.error(taskErrorResponse.put("message", sw.toString()));
-            } catch (JSONException e_inner) {
-                sw = new StringWriter();
-                pw = new PrintWriter(sw);
-                e_inner.printStackTrace(pw);
-                Log.d(TAG, sw.toString());
-            }
-            mCallbackContext.sendPluginResult(mPluginResult);
-            return;
+            update_avail = 3;
         }
         Log.d(TAG, "Current version: " + currentVersion + ", Play Store version: " + newVersion);
         if (newVersion != null && !newVersion.isEmpty()) {
             String[] currentVersionArr = currentVersion.split("\\.");
             String[] newVersionArr = newVersion.split("\\.");
             for (int i=0; i<currentVersionArr.length; i++) {
+                if (Float.valueOf(currentVersionArr[i]) > Float.valueOf(newVersionArr[i])) {
+                    update_avail = 2;
+                    break;
+                }
                 if (Float.valueOf(currentVersionArr[i]) < Float.valueOf(newVersionArr[i])) {
                     update_avail = 1;
-                    String force_str = null;
-                    try {
-                        force_str = Jsoup.connect(force_api)
-                                    .ignoreContentType(true)
-                                    .timeout(30000)
-                                    .userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6")
-                                    .referrer("http://www.google.com")
-                                    .execute()
-                                    .body();
-                        JSONObject force_data = new JSONObject(force_str);
-                        Iterator<String> force_keys = force_data.keys();
-                        while(force_keys.hasNext()) {
-                            String key = force_keys.next();
-                            resultObj.put(key, force_data.get(key));
-                        }
-                    } catch (IOException e) {
-                        StringWriter sw = new StringWriter();
-                        PrintWriter pw = new PrintWriter(sw);
-                        e.printStackTrace(pw);
-                        Log.e(TAG, sw.toString());
-                        final JSONObject taskErrorResponse = new JSONObject();
-                        mPluginResult = new PluginResult(PluginResult.Status.ERROR);
-                        try {
-                            mCallbackContext.error(taskErrorResponse.put("message", sw.toString()));
-                        } catch (JSONException e_inner) {
-                            sw = new StringWriter();
-                            pw = new PrintWriter(sw);
-                            e_inner.printStackTrace(pw);
-                            Log.d(TAG, sw.toString());
-                        }
-                        mCallbackContext.sendPluginResult(mPluginResult);
-                        return;
-                    }
                     break;
                 }
             }
         }
-        
-        resultObj.put("update_available",update_avail);
+
+        resultObj.put("updateAvailable",update_avail);
+        resultObj.put("appId",appId);
+        resultObj.put("currentVersion",currentVersion);
+        resultObj.put("storeVersion",newVersion);
+        resultObj.put("storeUrl",newVersion.isEmpty() ? "" : storeUrl);
 
         mPluginResult = new PluginResult(PluginResult.Status.OK, resultObj);
         mCallbackContext.success(resultObj);
